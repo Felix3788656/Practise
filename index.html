@@ -1,313 +1,273 @@
-"""
 
-A* grid planning - Group 11 Task 1 Scenario 1
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A* Aircraft Pathfinding Visualizer</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f3f6fb;
+    color: #172033;
+    text-align: center;
+    margin: 0;
+    padding: 24px 12px;
+  }
+  h1 { margin-bottom: 8px; }
+  p { color: #526078; }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+    gap: 2px;
+    max-width: 700px;
+    margin: 22px auto;
+  }
+  .cell {
+    aspect-ratio: 1;
+    background: white;
+    border: 1px solid #d6deea;
+    border-radius: 2px;
+  }
+  .wall { background: #263248; }
+  .open { background: #f5ce62; }
+  .closed { background: #f39b62; }
+  .path { background: #36b879; }
+  .start { background: #3785ed; }
+  .goal { background: #e75261; }
+  button {
+    margin: 5px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 7px;
+    background: #245fca;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: #174a9f; }
+  #status { font-weight: bold; min-height: 24px; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .key {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    vertical-align: -1px;
+  }
+</style>
+</head>
+<body>
 
-"""
+<h1>A* Aircraft Pathfinding</h1>
+<p>Watch the algorithm search for a low-cost route around obstacles.</p>
 
-import math
-import matplotlib.pyplot as plt
+<div>
+  <button id="start">Start animation</button>
+  <button id="pause">Pause</button>
+  <button id="step">Next step</button>
+  <button id="reset">Reset</button>
+</div>
 
-show_animation = True
+<div id="status">Ready to plan the route.</div>
+<div id="grid"></div>
 
+<div class="legend">
+  <span><i class="key start"></i>Start</span>
+  <span><i class="key goal"></i>Destination</span>
+  <span><i class="key wall"></i>Obstacle</span>
+  <span><i class="key open"></i>Frontier</span>
+  <span><i class="key closed"></i>Explored</span>
+  <span><i class="key path"></i>Final path</span>
+</div>
 
-class AStarPlanner:
+<script>
+const ROWS = 15, COLS = 20;
+const start = {r: 7, c: 1};
+const goal = {r: 7, c: 18};
 
-    def __init__(self, ox, oy, resolution, rr, fc_x, fc_y, tc_x, tc_y):
-        """
-        Initialize grid map for a star planning
-        """
-        self.resolution = resolution 
-        self.rr = rr 
-        self.min_x, self.min_y = 0, 0
-        self.max_x, self.max_y = 0, 0
-        self.obstacle_map = None
-        self.x_width, self.y_width = 0, 0
-        self.motion = self.get_motion_model() 
-        self.calc_obstacle_map(ox, oy)
+const walls = new Set();
+for (let r = 2; r <= 11; r++) {
+  if (r !== 5) walls.add(`${r},5`);
+}
+for (let r = 3; r <= 13; r++) {
+  if (r !== 10) walls.add(`${r},10`);
+}
+for (let r = 0; r <= 7; r++) {
+  if (r !== 3) walls.add(`${r},15`);
+}
 
-        self.fc_x = fc_x
-        self.fc_y = fc_y
-        self.tc_x = tc_x
-        self.tc_y = tc_y
-        
-        # UPDATED RULES: 30% additional time for Time area, 15% for Fuel area
-        self.Delta_C1 = 0.3 # Time-consuming area modifier (30% extra time)
-        self.Delta_C2 = 0.15 # Fuel-consuming area modifier (15% extra time)
+const grid = document.getElementById("grid");
+const statusBox = document.getElementById("status");
 
-        self.costPerGrid = 1 
+let cells = [];
+let open = [];
+let closed = new Set();
+let cameFrom = new Map();
+let gScore = new Map();
+let finalPath = [];
+let timer = null;
+let finished = false;
 
-    class Node: 
-        def __init__(self, x, y, cost, parent_index):
-            self.x = x  
-            self.y = y  
-            self.cost = cost
-            self.parent_index = parent_index
+const key = p => `${p.r},${p.c}`;
+const same = (a, b) => key(a) === key(b);
 
-        def __str__(self):
-            return str(self.x) + "," + str(self.y) + "," + str(
-                self.cost) + "," + str(self.parent_index)
+function heuristic(a, b) {
+  return Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+}
 
-    def planning(self, sx, sy, gx, gy):
-        start_node = self.Node(self.calc_xy_index(sx, self.min_x), 
-                               self.calc_xy_index(sy, self.min_y), 0.0, -1) 
-        goal_node = self.Node(self.calc_xy_index(gx, self.min_x), 
-                              self.calc_xy_index(gy, self.min_y), 0.0, -1)
+function neighbours(p) {
+  return [
+    {r:p.r-1,c:p.c}, {r:p.r+1,c:p.c},
+    {r:p.r,c:p.c-1}, {r:p.r,c:p.c+1}
+  ].filter(n =>
+    n.r >= 0 && n.r < ROWS &&
+    n.c >= 0 && n.c < COLS &&
+    !walls.has(key(n))
+  );
+}
 
-        open_set, closed_set = dict(), dict() 
-        open_set[self.calc_grid_index(start_node)] = start_node 
+function draw() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = {r,c};
+      const k = key(p);
+      const el = cells[r][c];
 
-        while 1:
-            if len(open_set) == 0:
-                print("Open set is empty..")
-                break
+      el.className = "cell";
+      if (walls.has(k)) el.classList.add("wall");
+      if (open.some(n => key(n) === k)) el.className = "cell open";
+      if (closed.has(k)) el.className = "cell closed";
+      if (finalPath.some(n => key(n) === k)) el.className = "cell path";
+      if (same(p,start)) el.className = "cell start";
+      if (same(p,goal)) el.className = "cell goal";
+    }
+  }
+}
 
-            c_id = min(
-                open_set,
-                key=lambda o: open_set[o].cost + self.calc_heuristic(self, goal_node,
-                                                                     open_set[o])) 
-            current = open_set[c_id]
+function reset() {
+  clearInterval(timer);
+  timer = null;
+  open = [{...start}];
+  closed = new Set();
+  cameFrom = new Map();
+  gScore = new Map([[key(start), 0]]);
+  finalPath = [];
+  finished = false;
+  statusBox.textContent = "Ready to plan the route.";
+  draw();
+}
 
-            if show_animation:  
-                plt.plot(self.calc_grid_position(current.x, self.min_x),
-                         self.calc_grid_position(current.y, self.min_y), "xc")
-                plt.gcf().canvas.mpl_connect('key_release_event',
-                                             lambda event: [exit(
-                                                 0) if event.key == 'escape' else None])
-                if len(closed_set.keys()) % 10 == 0:
-                    plt.pause(0.001)
+function reconstructPath(current) {
+  const path = [current];
+  while (cameFrom.has(key(current))) {
+    current = cameFrom.get(key(current));
+    path.unshift(current);
+  }
+  return path;
+}
 
-            # reaching goal
-            if current.x == goal_node.x and current.y == goal_node.y:
-                print(f"Total Trip time required -> {current.cost:.2f} minutes")
-                goal_node.parent_index = current.parent_index
-                goal_node.cost = current.cost
-                break
+function step() {
+  if (finished) return;
 
-            del open_set[c_id]
-            closed_set[c_id] = current
+  if (open.length === 0) {
+    finished = true;
+    clearInterval(timer);
+    timer = null;
+    statusBox.textContent = "No route found.";
+    return;
+  }
 
-            for i, _ in enumerate(self.motion):
-                node = self.Node(current.x + self.motion[i][0],
-                                 current.y + self.motion[i][1],
-                                 current.cost + self.motion[i][2] * self.costPerGrid, c_id)
-                
-                # Add cost in cost intensive area 1 (Time-consuming area)
-                if self.calc_grid_position(node.x, self.min_x) in self.tc_x:
-                    if self.calc_grid_position(node.y, self.min_y) in self.tc_y:
-                        node.cost = node.cost + self.Delta_C1 * self.motion[i][2]
-                
-                # Add cost in cost intensive area 2 (Fuel-consuming area)
-                if self.calc_grid_position(node.x, self.min_x) in self.fc_x:
-                    if self.calc_grid_position(node.y, self.min_y) in self.fc_y:
-                        node.cost = node.cost + self.Delta_C2 * self.motion[i][2]
-                
-                n_id = self.calc_grid_index(node)
+  // Choose the node with the lowest f = g + h.
+  open.sort((a,b) =>
+    (gScore.get(key(a)) + heuristic(a,goal)) -
+    (gScore.get(key(b)) + heuristic(b,goal))
+  );
 
-                if not self.verify_node(node):
-                    continue
-                if n_id in closed_set:
-                    continue
-                if n_id not in open_set:
-                    open_set[n_id] = node  
-                else:
-                    if open_set[n_id].cost > node.cost:
-                        open_set[n_id] = node
+  const current = open.shift();
+  const ck = key(current);
 
-        rx, ry = self.calc_final_path(goal_node, closed_set)
-        # Return the total time (T_best) along with the path
-        return rx, ry, goal_node.cost
+  if (closed.has(ck)) {
+    draw();
+    return;
+  }
 
-    def calc_final_path(self, goal_node, closed_set):
-        rx, ry = [self.calc_grid_position(goal_node.x, self.min_x)], [
-            self.calc_grid_position(goal_node.y, self.min_y)] 
-        parent_index = goal_node.parent_index
-        while parent_index != -1:
-            n = closed_set[parent_index]
-            rx.append(self.calc_grid_position(n.x, self.min_x))
-            ry.append(self.calc_grid_position(n.y, self.min_y))
-            parent_index = n.parent_index
-        return rx, ry
+  if (same(current, goal)) {
+    finalPath = reconstructPath(current);
+    finished = true;
+    clearInterval(timer);
+    timer = null;
+    draw();
+    statusBox.textContent =
+      `Route found! ${finalPath.length - 1} steps.`;
+    return;
+  }
 
-    @staticmethod
-    def calc_heuristic(self, n1, n2):
-        w = 1.0  
-        d = w * math.hypot(n1.x - n2.x, n1.y - n2.y)
-        d = d * self.costPerGrid
-        return d
-    
-    def calc_grid_position(self, index, min_position):
-        pos = index * self.resolution + min_position
-        return pos
+  closed.add(ck);
 
-    def calc_xy_index(self, position, min_pos):
-        return round((position - min_pos) / self.resolution)
+  for (const next of neighbours(current)) {
+    const nk = key(next);
+    if (closed.has(nk)) continue;
 
-    def calc_grid_index(self, node):
-        return (node.y - self.min_y) * self.x_width + (node.x - self.min_x) 
+    const tentativeG = gScore.get(ck) + 1;
 
-    def verify_node(self, node):
-        px = self.calc_grid_position(node.x, self.min_x)
-        py = self.calc_grid_position(node.y, self.min_y)
+    if (tentativeG < (gScore.get(nk) ?? Infinity)) {
+      cameFrom.set(nk, current);
+      gScore.set(nk, tentativeG);
 
-        if px < self.min_x: return False
-        elif py < self.min_y: return False
-        elif px >= self.max_x: return False
-        elif py >= self.max_y: return False
-        if self.obstacle_map[node.x][node.y]: return False
-        return True
+      if (!open.some(n => key(n) === nk)) {
+        open.push(next);
+      }
+    }
+  }
 
-    def calc_obstacle_map(self, ox, oy):
-        self.min_x = round(min(ox))
-        self.min_y = round(min(oy))
-        self.max_x = round(max(ox))
-        self.max_y = round(max(oy))
-        self.x_width = round((self.max_x - self.min_x) / self.resolution)
-        self.y_width = round((self.max_y - self.min_y) / self.resolution)
+  draw();
+  statusBox.textContent =
+    `Searching... explored ${closed.size} nodes.`;
+}
 
-        self.obstacle_map = [[False for _ in range(self.y_width)] for _ in range(self.x_width)]
-        for ix in range(self.x_width):
-            x = self.calc_grid_position(ix, self.min_x)
-            for iy in range(self.y_width):
-                y = self.calc_grid_position(iy, self.min_y)
-                for iox, ioy in zip(ox, oy): 
-                    d = math.hypot(iox - x, ioy - y) 
-                    if d <= self.rr:
-                        self.obstacle_map[ix][iy] = True 
-                        break
+function buildGrid() {
+  grid.innerHTML = "";
+  cells = [];
 
-    @staticmethod
-    def get_motion_model(): 
-        motion = [[1, 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1],
-                  [-1, -1, math.sqrt(2)], [-1, 1, math.sqrt(2)],
-                  [1, -1, math.sqrt(2)], [1, 1, math.sqrt(2)]]
-        return motion
+  for (let r = 0; r < ROWS; r++) {
+    cells[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      const el = document.createElement("div");
+      el.className = "cell";
+      el.title = `Row ${r}, Column ${c}`;
+      grid.appendChild(el);
+      cells[r][c] = el;
+    }
+  }
+}
 
+document.getElementById("start").onclick = () => {
+  if (finished || timer) return;
+  timer = setInterval(step, 120);
+};
 
-def calculate_aircraft_costs(T_best):
-    print("\n" + "="*50)
-    print("TASK 1: SCENARIO 1 COST ANALYSIS")
-    print("="*50)
-    print(f"Fastest Path Time (T_best): {T_best:.2f} minutes")
-    
-    # Scenario 1 Parameters
-    passengers = 3300
-    max_flights = 13
-    fuel_cost_per_kg = 0.85 
-    
-    # Aircraft Specs: [Capacity, Fuel Rate (kg/min), Time Cost (Medium $/min), Fixed Cost]
-    A321 = {"name": "A321neo", "cap": 200, "fuel_rate": 54, "time_cost": 15, "fixed": 1800}
-    A330 = {"name": "A330-900neo", "cap": 300, "fuel_rate": 84, "time_cost": 21, "fixed": 2000}
-    A350 = {"name": "A350-900", "cap": 350, "fuel_rate": 90, "time_cost": 27, "fixed": 2500}
-    
-    aircraft_list = [A321, A330, A350]
-    best_cost = float('inf')
-    best_plane = ""
+document.getElementById("pause").onclick = () => {
+  clearInterval(timer);
+  timer = null;
+};
 
-    for plane in aircraft_list:
-        # Calculate number of flights needed (round up)
-        flights_needed = math.ceil(passengers / plane["cap"])
-        
-        print(f"\n--- {plane['name']} ---")
-        print(f"Flights needed: {flights_needed} (Max allowed: {max_flights})")
-        
-        if flights_needed > max_flights:
-            print("STATUS: NOT VIABLE (Exceeds maximum flight limit)")
-            continue
-            
-        # Cost calculation per flight
-        fuel_cost = fuel_cost_per_kg * plane["fuel_rate"] * T_best
-        time_cost = plane["time_cost"] * T_best
-        cost_per_flight = fuel_cost + time_cost + plane["fixed"]
-        
-        # Total cost for all flights
-        total_cost = cost_per_flight * flights_needed
-        print(f"Cost per flight: ${cost_per_flight:.2f}")
-        print(f"TOTAL COST: ${total_cost:.2f}")
-        
-        # Track the cheapest viable option
-        if total_cost < best_cost:
-            best_cost = total_cost
-            best_plane = plane["name"]
+document.getElementById("step").onclick = () => {
+  clearInterval(timer);
+  timer = null;
+  step();
+};
 
-    print("\n" + "="*50)
-    if best_plane:
-        print(f"WINNER: {best_plane} with a total cost of ${best_cost:.2f}")
-    else:
-        print("No viable aircraft found for this scenario.")
-    print("="*50 + "\n")
+document.getElementById("reset").onclick = reset;
 
-
-def main():
-    print(__file__ + " start the A star algorithm demo !!") 
-
-    # --- Group 11 Map Configuration ---
-    sx, sy = 0.0, 0.0     # Start node S(0, 0)
-    gx, gy = 40.0, 50.0   # Goal node E(40, 50)
-    
-    grid_size = 1  
-    robot_radius = 1.0  
-
-    ox, oy = [], []
-    
-    # Outer borders
-    for i in range(-10, 60): 
-        ox.append(i); oy.append(-10.0)
-    for i in range(-10, 60):
-        ox.append(60.0); oy.append(i)
-    for i in range(-10, 61):
-        ox.append(i); oy.append(60.0)
-    for i in range(-10, 61):
-        ox.append(-10.0); oy.append(i)
-
-    # Wall 1: (10, 30) to (10, 50) -> Vertical wall
-    for i in range(30, 51):
-        ox.append(10.0); oy.append(i)
-        
-    # Wall 2: (10, 30) to (20, 10) -> Diagonal y = -2x + 50
-    for i in range(10, 21):
-        ox.append(i); oy.append(-2 * i + 50)
-
-    # Wall 3: (20, 10) to (30, 30) -> Diagonal y = 2x - 30
-    for i in range(20, 31):
-        ox.append(i); oy.append(2 * i - 30)
-
-    # --- Set Cost Intensive Areas ---
-    # Time-consuming area (Red): x from -10 to 10, y from 10 to 20
-    tc_x, tc_y = [], []
-    for i in range(-10, 10):
-        for j in range(10, 20):
-            tc_x.append(i); tc_y.append(j)
-    
-    # Fuel-consuming area (Yellow): x from 40 to 60, y from 30 to 40
-    fc_x, fc_y = [], []
-    for i in range(40, 60):
-        for j in range(30, 40):
-            fc_x.append(i); fc_y.append(j)
-
-    # Plot setup
-    if show_animation:  
-        plt.plot(ox, oy, ".k") 
-        plt.plot(sx, sy, "og") 
-        plt.plot(gx, gy, "xb") 
-        plt.plot(fc_x, fc_y, "oy") 
-        plt.plot(tc_x, tc_y, "or") 
-        plt.grid(True) 
-        plt.axis("equal") 
-
-    # Run A* Algorithm
-    a_star = AStarPlanner(ox, oy, grid_size, robot_radius, fc_x, fc_y, tc_x, tc_y)
-    
-    # rx, ry is the path; T_best is the total time
-    rx, ry, T_best = a_star.planning(sx, sy, gx, gy)
-
-    if show_animation:  
-        plt.plot(rx, ry, "-r") 
-        plt.pause(0.001) 
-        plt.show() 
-
-    # Calculate Aircraft Costs based on the time found
-    calculate_aircraft_costs(T_best)
-
-
-if __name__ == '__main__':
-    main()
+buildGrid();
+reset();
+</script>
+</body>
+</html>
