@@ -1,0 +1,83 @@
+def main():
+    print(__file__ + " start the A star algorithm demo !!") # print simple notes
+
+    # 1. Start and goal position for Group 11
+    sx = 0.0   # [m] Start X
+    sy = 0.0   # [m] Start Y
+    gx = 40.0  # [m] Goal X
+    gy = 50.0  # [m] Goal Y
+    
+    grid_size = 1  # [m]
+    robot_radius = 1.0  # [m]
+
+    # 2. Set obstacle positions for Group 11
+    ox, oy = [], []
+    
+    # Draw the outer borders (standard -10 to 60)
+    for i in range(-10, 60): 
+        ox.append(i)
+        oy.append(-10.0)
+    for i in range(-10, 60):
+        ox.append(60.0)
+        oy.append(i)
+    for i in range(-10, 61):
+        ox.append(i)
+        oy.append(60.0)
+    for i in range(-10, 61):
+        ox.append(-10.0)
+        oy.append(i)
+
+    # Draw the vertical wall at x=10, from y=30 to y=50
+    for i in range(30, 51):
+        ox.append(10.0)
+        oy.append(i)
+        
+    # Draw the diagonal wall from (10, 30) to (20, 10)
+    # Equation: y = -2x + 50
+    for i in range(10, 21):
+        ox.append(i)
+        oy.append(-2 * i + 50)
+
+    # Draw the diagonal wall from (20, 10) to (30, 30)
+    # Equation: y = 2x - 30
+    for i in range(20, 31):
+        ox.append(i)
+        oy.append(2 * i - 30)
+
+
+    # 3. Set cost intensive area 1 (Time-consuming area - Red/Pink)
+    # Box from x=-10 to 10, y=10 to 20
+    tc_x, tc_y = [], []
+    for i in range(-10, 10):
+        for j in range(10, 20):
+            tc_x.append(i)
+            tc_y.append(j)
+    
+    # 4. Set cost intensive area 2 (Fuel-consuming area - Yellow/Olive)
+    # Box from x=40 to 60, y=30 to 40
+    fc_x, fc_y = [], []
+    for i in range(40, 60):
+        for j in range(30, 40):
+            fc_x.append(i)
+            fc_y.append(j)
+
+
+    if show_animation:  # pragma: no cover
+        plt.plot(ox, oy, ".k") # plot the obstacle
+        plt.plot(sx, sy, "og") # plot the start position 
+        plt.plot(gx, gy, "xb") # plot the end position
+        
+        # Note: "oy" (yellow) plots the fuel area, "or" (red) plots the time area
+        plt.plot(fc_x, fc_y, "oy") 
+        plt.plot(tc_x, tc_y, "or") 
+
+        plt.grid(True) # plot the grid to the plot panel
+        plt.axis("equal") # set the same resolution for x and y axis 
+
+    a_star = AStarPlanner(ox, oy, grid_size, robot_radius, fc_x, fc_y, tc_x, tc_y)
+    rx, ry = a_star.planning(sx, sy, gx, gy)
+
+    if show_animation:  # pragma: no cover
+        plt.plot(rx, ry, "-r") # show the route 
+        plt.pause(0.001) # pause 0.001 seconds
+        plt.show() # show the plot
