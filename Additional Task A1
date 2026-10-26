@@ -1,0 +1,254 @@
+Group 11 - A1: Adding Checkpoints
+Aircraft mission: Start -> Time-intensive checkpoint -> Fuel-intensive checkpoint -> Destination.
+Based on the original a_star_g11 Amman.py scenario, with checkpoint routing and visualization.
+"""
+import math
+import heapq
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.patches import Rectangle
+
+# ---------------- Mission and grid settings ----------------
+GRID_MIN, GRID_MAX = -10, 60
+START = (0, 0)
+TIME_CHECKPOINT = (0, 15)       # Inside time-intensive area
+FUEL_CHECKPOINT = (40, 35)      # Inside fuel-intensive area
+GOAL = (40, 50)
+GRID_SIZE = 1.0
+OBSTACLE_RADIUS = 1.0
+
+# Cost-intensive regions from the original Group 11 code.
+TIME_AREA = (-10, 10, 10, 20)  # xmin, xmax, ymin, ymax
+FUEL_AREA = (30, 60, 30, 40)
+TIME_PENALTY = 0.2
+FUEL_PENALTY = 1.0
+
+# ---------------- Build the original environment ----------------
+def build_obstacles():
+    obstacle_points = set()
+
+    # Outer boundary
+    for i in range(GRID_MIN, GRID_MAX + 1):
+        obstacle_points.update({
+            (GRID_MIN, i), (GRID_MAX, i),
+            (i, GRID_MIN), (i, GRID_MAX)
+        })
+
+    # Original Group 11 barrier at x=10, y=30..50
+    for y in range(30, 51):
+        obstacle_points.add((10, y))
+
+    # Original sloping barriers, sampled densely and rounded to grid cells
+    for x in np.arange(10, 20.01, 0.1):
+        obstacle_points.add((round(float(x)), round(float(-2*x + 50))))
+    for x in np.arange(20, 30.01, 0.1):
+        obstacle_points.add((round(float(x)), round(float(4*x - 90))))
+
+    # Inflate obstacles by the original aircraft/robot radius.
+    blocked = set()
+    radius = int(math.ceil(OBSTACLE_RADIUS))
+    for ox, oy in obstacle_points:
+        for x in range(ox-radius, ox+radius+1):
+            for y in range(oy-radius, oy+radius+1):
+                if math.hypot(x-ox, y-oy) <= OBSTACLE_RADIUS:
+                    blocked.add((x, y))
+    return blocked
+
+OBSTACLES = build_obstacles()
+
+def inside_area(p, area):
+    x, y = p
+    xmin, xmax, ymin, ymax = area
+    return xmin <= x <= xmax and ymin <= y <= ymax
+
+def cell_penalty(p):
+    penalty = 0.0
+    if inside_area(p, TIME_AREA):
+        penalty += TIME_PENALTY
+    if inside_area(p, FUEL_AREA):
+        penalty += FUEL_PENALTY
+    return penalty
+
+MOVES = [
+    (1, 0, 1.0), (-1, 0, 1.0), (0, 1, 1.0), (0, -1, 1.0),
+    (1, 1, math.sqrt(2)), (1, -1, math.sqrt(2)),
+    (-1, 1, math.sqrt(2)), (-1, -1, math.sqrt(2))
+]
+
+def heuristic(a, b):
+    return math.hypot(a[0]-b[0], a[1]-b[1])
+
+def valid(p):
+    x, y = p
+    return (GRID_MIN < x < GRID_MAX and GRID_MIN < y < GRID_MAX
+            and p not in OBSTACLES)
+
+def astar(start, goal):
+    """Return the path, explored cells in order, and accumulated route cost."""
+    frontier = []
+    counter = 0
+    heapq.heappush(frontier, (heuristic(start, goal), counter, start))
+    came_from = {}
+    g_score = {start: 0.0}
+    closed = set()
+    explored_order = []
+
+    while frontier:
+        _, _, current = heapq.heappop(frontier)
+        if current in closed:
+            continue
+        closed.add(current)
+        explored_order.append(current)
+
+        if current == goal:
+            path = [current]
+            while current in came_from:
+                current = came_from[current]
+                path.append(current)
+            path.reverse()
+            return path, explored_order, g_score[goal]
+
+        for dx, dy, move_cost in MOVES:
+            nxt = (current[0]+dx, current[1]+dy)
+            if not valid(nxt):
+                continue
+
+            # Do not cut diagonally through a blocked corner.
+            if dx and dy:
+                if not valid((current[0]+dx, current[1])) or not valid((current[0], current[1]+dy)):
+                    continue
+
+            if nxt in closed:
+                continue
+
+            # Charge the region penalty when entering a cell in that area.
+            tentative_g = g_score[current] + move_cost + cell_penalty(nxt)
+            if tentative_g < g_score.get(nxt, float("inf")):
+                came_from[nxt] = current
+                g_score[nxt] = tentative_g
+                counter += 1
+                heapq.heappush(frontier, (tentative_g + heuristic(nxt, goal), counter, nxt))
+
+    raise RuntimeError(f"No route found from {start} to {goal}")
+
+def plan_mission():
+    waypoints = [START, TIME_CHECKPOINT, FUEL_CHECKPOINT, GOAL]
+    full_path = []
+    all_explored = []
+    segment_costs = []
+    for i in range(len(waypoints)-1):
+        path, explored, cost = astar(waypoints[i], waypoints[i+1])
+        # Avoid duplicating the join waypoint between segments.
+        if full_path:
+            full_path.extend(path[1:])
+        else:
+            full_path.extend(path)
+        all_explored.append(explored)
+        segment_costs.append(cost)
+    return waypoints, full_path, all_explored, segment_costs
+
+def draw_scene(ax, explored=None, path=None, show_path=True):
+    ax.clear()
+    ax.set_facecolor("#fbfcfe")
+
+    # Cost-intensive regions
+    ax.add_patch(Rectangle((-10, 10), 20, 10, facecolor="lightcoral",
+                           edgecolor="black", alpha=0.40, zorder=0))
+    ax.add_patch(Rectangle((30, 30), 30, 10, facecolor="gold",
+                           edgecolor="black", alpha=0.40, zorder=0))
+
+    # Obstacles (including the outer boundary and barriers)
+    ox = [p[0] for p in OBSTACLES]
+    oy = [p[1] for p in OBSTACLES]
+    ax.scatter(ox, oy, c="#263238", marker="s", s=8, label="Obstacle", zorder=2)
+
+    if explored:
+        ex, ey = zip(*explored)
+        ax.scatter(ex, ey, c="#56b4e9", marker=".", s=12,
+                   alpha=0.55, label="Explored nodes", zorder=3)
+
+    if path and show_path:
+        px, py = zip(*path)
+        ax.plot(px, py, color="#167d4b", linewidth=2.8,
+                label="Planned route", zorder=5)
+
+    # Mission markers
+    ax.scatter(*START, marker="*", s=220, c="#2878d0",
+               edgecolors="white", linewidths=0.8, label="Start", zorder=7)
+    ax.scatter(*TIME_CHECKPOINT, marker="D", s=115, c="#b42335",
+               edgecolors="white", linewidths=0.8, label="Checkpoint 1: Time", zorder=7)
+    ax.scatter(*FUEL_CHECKPOINT, marker="D", s=115, c="#c27c0e",
+               edgecolors="white", linewidths=0.8, label="Checkpoint 2: Fuel", zorder=7)
+    ax.scatter(*GOAL, marker="*", s=220, c="#7b3fb4",
+               edgecolors="white", linewidths=0.8, label="Destination", zorder=7)
+
+    ax.annotate("Start (0, 0)", START, xytext=(6, -14), textcoords="offset points",
+                fontsize=8, color="#1756a9")
+    ax.annotate("CP1 (0, 15)", TIME_CHECKPOINT, xytext=(6, 7), textcoords="offset points",
+                fontsize=8, color="#8e1b2a")
+    ax.annotate("CP2 (40, 35)", FUEL_CHECKPOINT, xytext=(6, 7), textcoords="offset points",
+                fontsize=8, color="#8a5800")
+    ax.annotate("Destination (40, 50)", GOAL, xytext=(6, 7), textcoords="offset points",
+                fontsize=8, color="#67339a")
+
+    ax.set_xlim(-12, 62)
+    ax.set_ylim(-12, 62)
+    ax.set_xticks(range(-10, 61, 10))
+    ax.set_yticks(range(-10, 61, 10))
+    ax.grid(True, linestyle="--", color="#9aa5b1", alpha=0.35)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("X coordinate")
+    ax.set_ylabel("Y coordinate")
+    ax.legend(loc="upper left", fontsize=7, ncol=2, framealpha=0.9)
+
+def main():
+    waypoints, full_path, explored_segments, segment_costs = plan_mission()
+
+    print("A1 mission completed: Start -> CP1 -> CP2 -> Destination")
+    print(f"Checkpoint 1 (time area): {TIME_CHECKPOINT}, inside area = {inside_area(TIME_CHECKPOINT, TIME_AREA)}")
+    print(f"Checkpoint 2 (fuel area): {FUEL_CHECKPOINT}, inside area = {inside_area(FUEL_CHECKPOINT, FUEL_AREA)}")
+    print("Segment costs:", " -> ".join(f"{c:.2f}" for c in segment_costs))
+    print(f"Total planned route cost: {sum(segment_costs):.2f}")
+    print(f"Number of grid points on route: {len(full_path)}")
+
+    # Build animation frames from each search segment.
+    frames = []
+    for seg_idx, explored in enumerate(explored_segments):
+        start_index = 0
+        stride = max(1, len(explored)//90)
+        for i in range(0, len(explored), stride):
+            frames.append((seg_idx, explored[:i+1], None, f"Searching segment {seg_idx+1}/3"))
+        # Show that segment's route after its search completes.
+        # Draw the route from the mission start through the waypoint reached so far.
+        reached = waypoints[:seg_idx+2]
+        partial_path = []
+        for j in range(seg_idx+1):
+            seg_path, _, _ = astar(waypoints[j], waypoints[j+1])
+            partial_path.extend(seg_path if not partial_path else seg_path[1:])
+        frames.append((seg_idx, explored, partial_path, f"Segment {seg_idx+1}/3 complete"))
+
+    # Final route frame
+    frames.append((2, explored_segments[-1], full_path, "Mission complete: both checkpoints visited"))
+
+    fig, ax = plt.subplots(figsize=(9, 8), dpi=100)
+
+    def update(frame_index):
+        seg_idx, explored, path, title = frames[frame_index]
+        draw_scene(ax, explored=explored, path=path)
+        ax.set_title(f"Group 11 — A1 Checkpoint Mission\n{title}", fontsize=12, weight="bold")
+        return []
+
+    anim = FuncAnimation(fig, update, frames=len(frames), interval=90, blit=False, repeat=True)
+    anim.save("a_star_g11_A1_animation.gif", writer=PillowWriter(fps=10))
+    update(len(frames)-1)
+    fig.tight_layout()
+    fig.savefig("a_star_g11_A1_final_route.png", bbox_inches="tight")
+    plt.close(fig)
+
+    # Also save a static final route view for the report.
+    print("Saved: a_star_g11_A1_animation.gif")
+    print("Saved: a_star_g11_A1_final_route.png")
+
+if __name__ == "__main__":
+    main()
