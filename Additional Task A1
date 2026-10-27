@@ -1,3 +1,4 @@
+"""
 Group 11 - A1: Adding Checkpoints
 Aircraft mission: Start -> Time-intensive checkpoint -> Fuel-intensive checkpoint -> Destination.
 Based on the original a_star_g11 Amman.py scenario, with checkpoint routing and visualization.
