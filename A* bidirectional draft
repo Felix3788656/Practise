@@ -1,0 +1,95 @@
+import random
+import math
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
+# --- IMPORT ALGORITHMS ---
+import a_star_g11 as a_star_module               # Your custom A*
+import bidirectional_a_star as bi_a_star_module  # From zhm-real/PathPlanning
+
+# --- SETTINGS ---
+WORLD_MIN, WORLD_MAX = -10, 60
+FUEL_AREA_SIZE = 40
+OBSTACLE_COUNT = 1250
+SAFE_DISTANCE = 5
+RESOLUTION = 1.0
+ROBOT_RADIUS = 0.5
+
+def generate_environment():
+    """Generates a fixed environment using a seed."""
+    random.seed(42)  # Ensure identical map across scripts
+    
+    fx = random.randint(WORLD_MIN, WORLD_MAX - FUEL_AREA_SIZE)
+    fy = random.randint(WORLD_MIN, WORLD_MAX - FUEL_AREA_SIZE)
+
+    fc_x, fc_y = [], []
+    for i in range(fx, fx + FUEL_AREA_SIZE):
+        for j in range(fy, fy + FUEL_AREA_SIZE):
+            fc_x.append(i)
+            fc_y.append(j)
+
+    sx, sy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+    gx, gy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+    while math.hypot(sx-gx, sy-gy) < 40:
+        gx, gy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+
+    obstacles = set()
+    for i in range(WORLD_MIN, WORLD_MAX + 1):
+        obstacles.add((i, WORLD_MIN))
+        obstacles.add((i, WORLD_MAX))
+        obstacles.add((WORLD_MIN, i))
+        obstacles.add((WORLD_MAX, i))
+
+    while len(obstacles) < OBSTACLE_COUNT + (4 * (WORLD_MAX - WORLD_MIN)):
+        rx, ry = random.randint(WORLD_MIN+1, WORLD_MAX-1), random.randint(WORLD_MIN+1, WORLD_MAX-1)
+        if math.hypot(rx-sx, ry-sy) < SAFE_DISTANCE: continue
+        if math.hypot(rx-gx, ry-gy) < SAFE_DISTANCE: continue
+        obstacles.add((rx, ry))
+
+    ox = [p[0] for p in obstacles]
+    oy = [p[1] for p in obstacles]
+
+    return fx, fy, fc_x, fc_y, sx, sy, gx, gy, ox, oy
+
+def draw_env(ax, fx, fy, ox, oy, sx, sy, gx, gy, title):
+    ax.add_patch(patches.Rectangle((fx, fy), FUEL_AREA_SIZE, FUEL_AREA_SIZE,
+                                   facecolor='y', edgecolor='black', alpha=0.6, zorder=1))
+    ax.plot(ox, oy, "sk", markersize=2, zorder=2)
+    ax.plot(sx, sy, '*b', markersize=15, zorder=3)
+    ax.plot(gx, gy, '*g', markersize=15, zorder=3)
+    ax.grid(True, linestyle="--", color="lightgray", alpha=0.5)
+    ax.set_xlim(WORLD_MIN - 2, WORLD_MAX + 2)
+    ax.set_ylim(WORLD_MIN - 2, WORLD_MAX + 2)
+    ax.set_title(title, fontsize=12)
+
+def main():
+    fx, fy, fc_x, fc_y, sx, sy, gx, gy, ox, oy = generate_environment()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # --- 1. Custom A* ---
+    print("Running A*...")
+    planner_astar = a_star_module.AStarPlanner(ox, oy, RESOLUTION, ROBOT_RADIUS, fc_x, fc_y, [], [], sx, sy, gx, gy)
+    planner_astar.motion = [[1, 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1]] # 4-dir
+    planner_astar.Delta_C2 = 1.0 
+    
+    # Note: If your planning function pops up an animation, you may need to disable it inside a_star_g11.py
+    rx_a, ry_a, cost_a = planner_astar.planning(sx, sy, gx, gy)
+    
+    draw_env(ax1, fx, fy, ox, oy, sx, sy, gx, gy, f"Custom A* (Cost: {cost_a:.1f})")
+    ax1.plot(rx_a, ry_a, "-r", linewidth=2, zorder=4)
+
+    # --- 2. Bidirectional A* ---
+    print("Running Bidirectional A*...")
+    # Standard Bi-A* does 8-directional and ignores the fuel penalty natively
+    planner_bi = bi_a_star_module.BidirectionalAStarPlanner(ox, oy, RESOLUTION, ROBOT_RADIUS)
+    rx_bi, ry_bi = planner_bi.planning(sx, sy, gx, gy)
+    
+    draw_env(ax2, fx, fy, ox, oy, sx, sy, gx, gy, "Bidirectional A*")
+    if rx_bi:
+        ax2.plot(rx_bi, ry_bi, "-b", linewidth=2, zorder=4)
+
+    plt.tight_layout()
+    plt.show()
+
+if __name__ == "__main__":
+    main()
