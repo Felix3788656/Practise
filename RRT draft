@@ -1,0 +1,111 @@
+import random
+import math
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
+# --- IMPORT ALGORITHMS ---
+import a_star_g11 as a_star_module  # Your custom A*
+import rrt_star as rrt_star_module  # From zhm-real/PathPlanning
+
+# --- SETTINGS ---
+WORLD_MIN, WORLD_MAX = -10, 60
+FUEL_AREA_SIZE = 40
+OBSTACLE_COUNT = 1250
+SAFE_DISTANCE = 5
+RESOLUTION = 1.0
+ROBOT_RADIUS = 0.5
+
+def generate_environment():
+    """Generates a fixed environment using a seed."""
+    random.seed(42)  # Ensure identical map across scripts
+    
+    fx = random.randint(WORLD_MIN, WORLD_MAX - FUEL_AREA_SIZE)
+    fy = random.randint(WORLD_MIN, WORLD_MAX - FUEL_AREA_SIZE)
+
+    fc_x, fc_y = [], []
+    for i in range(fx, fx + FUEL_AREA_SIZE):
+        for j in range(fy, fy + FUEL_AREA_SIZE):
+            fc_x.append(i)
+            fc_y.append(j)
+
+    sx, sy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+    gx, gy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+    while math.hypot(sx-gx, sy-gy) < 40:
+        gx, gy = random.randint(WORLD_MIN+2, WORLD_MAX-2), random.randint(WORLD_MIN+2, WORLD_MAX-2)
+
+    obstacles = set()
+    for i in range(WORLD_MIN, WORLD_MAX + 1):
+        obstacles.add((i, WORLD_MIN))
+        obstacles.add((i, WORLD_MAX))
+        obstacles.add((WORLD_MIN, i))
+        obstacles.add((WORLD_MAX, i))
+
+    while len(obstacles) < OBSTACLE_COUNT + (4 * (WORLD_MAX - WORLD_MIN)):
+        rx, ry = random.randint(WORLD_MIN+1, WORLD_MAX-1), random.randint(WORLD_MIN+1, WORLD_MAX-1)
+        if math.hypot(rx-sx, ry-sy) < SAFE_DISTANCE: continue
+        if math.hypot(rx-gx, ry-gy) < SAFE_DISTANCE: continue
+        obstacles.add((rx, ry))
+
+    ox = [p[0] for p in obstacles]
+    oy = [p[1] for p in obstacles]
+
+    return fx, fy, fc_x, fc_y, sx, sy, gx, gy, ox, oy
+
+def draw_env(ax, fx, fy, ox, oy, sx, sy, gx, gy, title):
+    ax.add_patch(patches.Rectangle((fx, fy), FUEL_AREA_SIZE, FUEL_AREA_SIZE,
+                                   facecolor='y', edgecolor='black', alpha=0.6, zorder=1))
+    ax.plot(ox, oy, "sk", markersize=2, zorder=2)
+    ax.plot(sx, sy, '*b', markersize=15, zorder=3)
+    ax.plot(gx, gy, '*g', markersize=15, zorder=3)
+    ax.grid(True, linestyle="--", color="lightgray", alpha=0.5)
+    ax.set_xlim(WORLD_MIN - 2, WORLD_MAX + 2)
+    ax.set_ylim(WORLD_MIN - 2, WORLD_MAX + 2)
+    ax.set_title(title, fontsize=12)
+
+def main():
+    fx, fy, fc_x, fc_y, sx, sy, gx, gy, ox, oy = generate_environment()
+    
+    # Format for RRT*
+    obstacle_list = [[x, y, ROBOT_RADIUS] for x, y in zip(ox, oy)]
+    rand_area = [WORLD_MIN, WORLD_MAX]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # --- 1. Custom A* ---
+    print("Running A*...")
+    planner_astar = a_star_module.AStarPlanner(ox, oy, RESOLUTION, ROBOT_RADIUS, fc_x, fc_y, [], [], sx, sy, gx, gy)
+    planner_astar.motion = [[1, 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1]] # 4-dir
+    planner_astar.Delta_C2 = 1.0 
+    
+    rx_a, ry_a, cost_a = planner_astar.planning(sx, sy, gx, gy)
+    
+    draw_env(ax1, fx, fy, ox, oy, sx, sy, gx, gy, f"Custom A* (Cost: {cost_a:.1f})")
+    ax1.plot(rx_a, ry_a, "-r", linewidth=2, zorder=4)
+
+    # --- 2. RRT* ---
+    print("Running RRT*...")
+    planner_rrt = rrt_star_module.RRTStar(
+        start=sx, goal=sy, # WARNING: Check your rrt_star.py signature!
+        # Wait, the standard signature is (start, goal, ...). 
+        # Actually standard is: RRTStar(start, goal, obstacle_list...)
+        # Let's use standard positional args carefully:
+        # start=(sx,sy), goal=(gx,gy)
+    )
+    # To be safe with standard GitHub repo signature:
+    planner_rrt = rrt_star_module.RRTStar(
+        sx, sy, gx, gy, obstacle_list, rand_area,
+        expand_dis=2.0, path_resolution=0.5, 
+        goal_sample_rate=10, max_iter=2000, robot_radius=ROBOT_RADIUS
+    )
+    
+    rx_rrt, ry_rrt = planner_rrt.planning(animation=False)
+    
+    draw_env(ax2, fx, fy, ox, oy, sx, sy, gx, gy, "RRT* (Max Iter: 2000)")
+    if rx_rrt:
+        ax2.plot(rx_rrt, ry_rrt, "-m", linewidth=2, zorder=4)
+
+    plt.tight_layout()
+    plt.show()
+
+if __name__ == "__main__":
+    main()
