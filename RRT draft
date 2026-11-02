@@ -3,7 +3,9 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-
+# --- IMPORT ALGORITHMS ---
+import a_star_g11 as a_star_module  # Your custom A*
+import rrt_star as rrt_star_module  # From zhm-real/PathPlanning
 
 # --- SETTINGS ---
 WORLD_MIN, WORLD_MAX = -10, 60
