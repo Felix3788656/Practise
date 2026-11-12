@@ -1,26 +1,26 @@
 
 
-## 7. Additional Task A1 — Supply-Drop Checkpoints
+## Additional Task A1 — additional Checkpoints
 
 One checkpoint is generated **inside each cost-intensive area** (area centre, or the nearest free cell of the same area if the centre is blocked); the route is planned segment-by-segment with A\* over `start → CP → CP → goal`, and both visiting orders are evaluated.
 
-**Group 3 result**
+** result**
 
 | Checkpoint | Cell | Inside |
 | --- | --- | --- |
-| CP1 | (2, 25) | fuel-consuming area |
-| CP2 | (25, 7) | time-consuming area |
+| CP1 | (random) | fuel-consuming area |
+| CP2 | (random) | time-consuming area |
 
-Chosen order: `start → CP1 → CP2 → goal`, legs 46.35 + 44.00 + 61.50 min, **total T = 151.85 min**.
+Chosen order: `start → CP2 → CP1 → goal`, **total time .
 
 ![Checkpoints](AddionalTaskA/TaskA1.png)
 *Figure 2 — Planned supply route through both checkpoints (magenta diamonds); all drop-offs happen before the aircraft reaches base.*
 
 ---
 
-## 8. Additional Task A2 — Randomised Environment
+## Additional Task A2 — Changing Environment
 
-Each run generates a fresh mission. Implementation ↔️ slide requirement:
+Each time there will be a new path as the environment keep changing for each operation.
 
 | # | Requirement | Implementation | Verified |
 | --- | --- | --- | --- |
