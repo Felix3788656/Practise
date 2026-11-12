@@ -6,10 +6,10 @@ A checkpoint is randomly generated **inside each cost-intensive area** which mea
 
 ** result**
 
-| Checkpoint | Cell | Inside |
+| Checkpoint | coordination | Inside |
 | --- | --- | --- |
-| CP1 | (random) | fuel-consuming area |
-| CP2 | (random) | time-consuming area |
+| CP1 | (random in the area) | fuel-consuming area |
+| CP2 | (random in the area) | time-consuming area |
 
 Chosen order: `start → CP2 → CP1 → goal`, **total time 100(for example) .
 
