@@ -2,7 +2,7 @@
 
 ## Additional Task A1 — additional Checkpoints
 
-One checkpoint is generated **inside each cost-intensive area** (area centre, or the nearest free cell of the same area if the centre is blocked); the route is planned segment-by-segment with A\* over `start → CP → CP → goal`, and both visiting orders are evaluated.
+A checkpoint is randomly generated **inside each cost-intensive area** which means every time the location of checkpoints are different ; the route is decided by A* algorithm, The path should follow `start → CP → CP → goal`.
 
 ** result**
 
@@ -11,10 +11,10 @@ One checkpoint is generated **inside each cost-intensive area** (area centre, or
 | CP1 | (random) | fuel-consuming area |
 | CP2 | (random) | time-consuming area |
 
-Chosen order: `start → CP2 → CP1 → goal`, **total time .
+Chosen order: `start → CP2 → CP1 → goal`, **total time 100(for example) .
 
 ![Checkpoints](task_a1_route.gif)
-*Figure 2 — Planned supply route through both checkpoints (magenta diamonds); all drop-offs happen before the aircraft reaches base.*
+
 
 ---
 
