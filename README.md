@@ -13,7 +13,7 @@ One checkpoint is generated **inside each cost-intensive area** (area centre, or
 
 Chosen order: `start → CP2 → CP1 → goal`, **total time .
 
-![Checkpoints](AddionalTaskA/TaskA1.png)
+![Checkpoints](task_a1_route.gif)
 *Figure 2 — Planned supply route through both checkpoints (magenta diamonds); all drop-offs happen before the aircraft reaches base.*
 
 ---
