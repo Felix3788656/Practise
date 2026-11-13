@@ -34,11 +34,11 @@ The program creates the fuel-area coordinate lists, `fc_x` and `fc_y`, and passe
 
 ### 2. Random start and goal
 
-The start and goal positions are selected randomly inside the world. The goal is repeatedly reselected until its Euclidean distance from the start is at least **40 units**.
+The start and goal positions are generated randomly inside the world. The goal is repeatedly reselected until its Euclidean distance from the start is at least **40 units**.
 
 ### 3. Random obstacles and boundary walls
 
-The program creates boundary walls along all four edges of the world. It then randomly places interior obstacles.
+The program creates boundary walls along all four edges of the world. It then randomly places interior obstacles. we set the obstacles count for 1250
 
 An interior obstacle is rejected if it is closer than `SAFE_DISTANCE` to either the start or the goal. A Python `set` is used to prevent duplicate obstacle coordinates.
 
